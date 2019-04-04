@@ -1,5 +1,4 @@
 document.addEventListener('DOMContentLoaded', () => {
-  const { connect, showHelloWorld, targetCloverDomain, access_token, merchant_id } = remotePayCloudTutorial
 
   let displayState = ''
   const numpadKeys = document.querySelectorAll('.numpad--key')
@@ -42,17 +41,19 @@ document.addEventListener('DOMContentLoaded', () => {
   })
   
   connectKey.addEventListener('click', function() {
-    connect()
+    remotePayCloudTutorial.connect()
   })
   
   chargeKey.addEventListener('click', function() {
+    const amount = parseInt(document.getElementById('total').innerHTML.replace('.', ''))
+    if (amount > 0) remotePayCloudTutorial.performSale(amount)
   })
   
   helloWorldKey.addEventListener('click', function() {
-    showHelloWorld()
+    remotePayCloudTutorial.showHelloWorld()
   })
 
-  fetch(`${targetCloverDomain}/v3/merchants/${merchant_id}/devices?access_token=${access_token}`)
+  fetch(`${remotePayCloudTutorial.targetCloverDomain}/v3/merchants/${remotePayCloudTutorial.merchant_id}/devices?access_token=${remotePayCloudTutorial.access_token}`)
     .then(response => response.json())
     .then(data => {
       const select = document.getElementById('select--clover-device-serials')
