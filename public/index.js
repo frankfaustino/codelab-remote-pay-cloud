@@ -1,19 +1,21 @@
 const clover = require('remote-pay-cloud')
 
+var remotePayCloudTutorial
+
 // RemotePayCloudTutorial object definition
 RemotePayCloudTutorial = function() {
-  // TODO: Set instance variables for CloverConnector configuration.
   this.merchant_id = window.location.href.match(/merchant_id=([^&]*)/)[1]
   this.access_token = window.location.href.match(/access_token=([^&]*)/)[1]
   this.targetCloverDomain = window.location.href.includes('localhost') ? 'https://sandbox.dev.clover.com' : 'https://www.clover.com'
-  // this.remoteApplicationId = 'Forecast'
   this.remoteApplicationId = 'J8DFGXSTS7FM4.HFVTZ860SZM9W'
   this.friendlyId = 'Primary POS'
 
-  console.log(this.merchant_id, this.access_token, this.targetCloverDomain)
+  remotePayCloudTutorial = this
 }
 
 RemotePayCloudTutorial.prototype.setCloverConnectorListener = function(cloverConnector) {
+  const _this = this
+
   return Object.assign({}, clover.remotepay.ICloverConnectorListener.prototype, cloverConnector, {
     onDeviceConnected: function() {
       document.getElementById('status-message').innerHTML = 'Device is connected!'
@@ -34,10 +36,21 @@ RemotePayCloudTutorial.prototype.setCloverConnectorListener = function(cloverCon
       console.log({ message: '✨ print:' + e })
     },
     onSaleResponse: function(saleResponse) {
+      console.log('💰💰💰💰💰', saleResponse)
       if (saleResponse.getSuccess()) {
+        const saleRequestAmount = parseInt(window.localStorage.getItem('lastTransactionRequestAmount'))
         const saleResponseAmount = saleResponse.getPayment().getAmount()
-        const formattedSaleResponseAmount = (saleResponse / 100).toLocaleString('en-US', { style: 'currency', currency: 'USD' })
-        alert(`Sale was successful for ${formattedSaleResponseAmount}`)
+        const wasPartialAuth = saleResponseAmount < saleRequestAmount
+        const formattedSaleResponseAmount = (saleResponseAmount / 100).toLocaleString('en-US', { style: 'currency', currency: 'USD' })
+
+        if (wasPartialAuth) {
+          const remainingBalance = saleRequestAmount - saleResponseAmount
+          const formattedRemainingBalance = (remainingBalance / 100).toLocaleString('en-US', { style: 'currency', currency: 'USD' })
+          alert(`Partially authorized for ${formattedSaleResponseAmount} - remaining balance is ${formattedRemainingBalance}. Ask the customer for an additional payment method.`)
+          remotePayCloudTutorial.performSale(remainingBalance)
+        } else {
+          alert(`Sale was successful for ${formattedSaleResponseAmount}`)
+        }
       } else {
         alert(`${saleResponse.getReason()} - ${saleResponse.getMessage()}`)
       }
@@ -52,32 +65,51 @@ RemotePayCloudTutorial.prototype.setCloverConnectorListener = function(cloverCon
       for (let strokeIndex = 0; strokeIndex < verifySignatureRequest.getSignature().strokes.length; strokeIndex++) {
         const stroke = verifySignatureRequest.getSignature().strokes[strokeIndex]
         ctx.moveTo(stroke.points[0].x, stroke.points[0].y)
+
         for (let pointIndex = 1; pointIndex < stroke.points.length; pointIndex++) {
           ctx.lineTo(stroke.points[pointIndex].x, stroke.points[pointIndex].y)
-          stroke()
+          ctx.stroke()
         }
       }
       ctx.scale(4, 4)
 
       setTimeout(function() {
-        if (confirm("Would you like to approve this signature?")) {
-          this.cloverConnector.acceptSignature(verifySignatureRequest)
+        if (confirm('Would you like to approve this signature?')) {
+          _this.cloverConnector.acceptSignature(verifySignatureRequest)
         } else {
-          this.cloverConnector.rejectSignature(verifySignatureRequest)
+          _this.cloverConnector.rejectSignature(verifySignatureRequest)
         }
       }.bind(this), 0)
+    },
+    onConfirmPaymentRequest: function(confirmPaymentRequest) {
+      const challenges = confirmPaymentRequest.getChallenges()
+      // console.log(challenges)
+
+      for (let i = 0; i < challenges.length; i++) {
+        const isLastChallenge = i === challenges.length - 1
+
+        // console.log('❌❌❌❌', confirmPaymentRequest)
+        if (confirm(challenges[i].getMessage())) {
+          // console.log('❌❌❌❌', challenges[i].getMessage())
+          if (isLastChallenge) {
+            _this.cloverConnector.acceptSignature(confirmPaymentRequest)
+          }
+        } else {
+          _this.cloverConnector.rejectPayment(confirmPaymentRequest, confirmPaymentRequest.getChallenges()[i])
+        }
+      }
     }
   })
 }
 
 RemotePayCloudTutorial.prototype.showHelloWorld = function() {
-  // TODO: Show a 'Hello World' message on the device.
   this.cloverConnector.showMessage('Hello World')
-  const printReq = new clover.remotepay.PrintRequest()
-  printReq.setText(['testing', 'one', 'two'])
-  const deviceId = document.getElementById('select--clover-device-serials').value
-  printReq.setPrintDeviceId(deviceId)
-  this.cloverConnector.print(printReq)
+  // this.cloverConnector.resetDevice()
+  // const printReq = new clover.remotepay.PrintRequest()
+  // printReq.setText(['testing', 'one', 'two'])
+  // const deviceId = document.getElementById('select--clover-device-serials').value
+  // printReq.setPrintDeviceId(deviceId)
+  // this.cloverConnector.print(printReq)
 }
 
 RemotePayCloudTutorial.prototype.connect = function() {
@@ -118,6 +150,8 @@ RemotePayCloudTutorial.prototype.performSale = function(amount) {
     saleReq.setCardEntryMethods(clover.CardEntryMethods.ALL)
     document.getElementById('checkbox-manual-card-entry').checked = false
   }
+
+  window.localStorage.setItem('lastTransactionRequestAmount', amount)
   this.cloverConnector.sale(saleReq)
 }
 
